@@ -1,0 +1,11 @@
+# Segredos — nunca versionar
+.streamlit/secrets.toml
+serviceAccountKey.json
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
