@@ -222,7 +222,7 @@ def fs_set(collection, doc_id, data, merge=True):
     if not existe:
         url = f"{base}/{collection}?documentId={doc_id}"
         return _api(url, {"fields": fields}, method="POST")
-    url = f"{base}/{collection}/{doc_id}?updateMask.fieldPaths={','.join(data.keys())}" if merge else f"{base}/{collection}/{doc_id}"
+    url = f"{base}/{collection}/{doc_id}?" + "&".join(f"updateMask.fieldPaths={k}" for k in data.keys()) if merge else f"{base}/{collection}/{doc_id}"
     return _api(url, {"fields": fields}, method="PATCH" if merge else "POST")
 
 def fs_delete(collection, doc_id):

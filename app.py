@@ -36,15 +36,41 @@ aba = st.tabs(["📊 Usuários", "🎯 Metas", "⚔️ Desafios", "🜏 Íncubo"
 
 # ===== Helper UI =====
 def listar_usuarios():
+    return _usuarios_cache()
+
+def _mover_livro_painel(uid, livro, nova_coluna):
+    """Muda a coluna de um livro do usuário no Firestore (livros_json + livros)."""
     try:
-        docs = fb.fs_get("usuarios")
-        us = []
-        for d in docs.get("documents", []):
-            us.append((d["name"].split("/")[-1], fb.fs_doc_to_dict(d)))
-        return us
+        u = fb.usuario(uid)
+        livros = list(u.get("livros") or [])
+        mudou = False
+        for lb in livros:
+            if lb.get("id") == livro.get("id"):
+                lb["coluna"] = nova_coluna
+                mudou = True
+                break
+        if mudou:
+            # também atualiza livros_json (backup que o app restaura)
+            j = []
+            try:
+                import json as _json
+                j = _json.loads(u.get("livros_json") or "[]")
+            except Exception:
+                j = []
+            for lb in j:
+                if lb.get("id") == livro.get("id"):
+                    lb["coluna"] = nova_coluna
+                    break
+            dados = {**u, "livros": livros}
+            if j:
+                dados["livros_json"] = _json.dumps(j, ensure_ascii=False)
+            fb.salvar_usuario(uid, dados)
+            _usuarios_cache.clear()
+            st.success(f"📖 '{livro.get('titulo','?')}' movido para {nova_coluna}")
+        else:
+            st.warning("Livro não encontrado no doc do usuário (sync ainda não subiu?)")
     except Exception as e:
-        st.error(f"Erro ao listar: {e}")
-        return []
+        st.error(f"Falha ao mover: {e}")
 
 @st.cache_data(ttl=10)
 def _usuarios_cache():
@@ -92,11 +118,20 @@ with aba[0]:
                     for lb in livros_u[:60]:
                         col = lb.get("coluna", "ler")
                         icone = {"ler": "📕", "lendo": "📖", "lidos": "✅"}.get(col, "📕")
-                        st.markdown(
-                            f"{icone} **{lb.get('titulo','?')}** — {lb.get('autor','')} · "
-                            f"{lb.get('paginasLidas',0)}/{lb.get('paginasTotais',0)}p · "
-                            f"{'lido' if col=='lidos' else 'lendo' if col=='lendo' else 'para ler'}"
-                        )
+                        c1, c2 = st.columns([4, 1])
+                        with c1:
+                            st.markdown(
+                                f"{icone} **{lb.get('titulo','?')}** — {lb.get('autor','')} · "
+                                f"{lb.get('paginasLidas',0)}/{lb.get('paginasTotais',0)}p · "
+                                f"{'lido' if col=='lidos' else 'lendo' if col=='lendo' else 'para ler'}"
+                            )
+                        with c2:
+                            nova_col = st.selectbox(
+                                "coluna", ["ler", "lendo", "lidos"],
+                                index={"ler": 0, "lendo": 1, "lidos": 2}.get(col, 0),
+                                key=f"col_{uid}_{lb.get('id','')}", label_visibility="collapsed")
+                            if nova_col != col:
+                                _mover_livro_painel(uid, lb, nova_col)
             st.divider()
     else:
         st.info("Nenhum usuário ainda. Crie abaixo — depois o app faz login com o código.")
