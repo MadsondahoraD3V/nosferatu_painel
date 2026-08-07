@@ -54,13 +54,18 @@ def _usuarios_cache():
         for d in docs.get("documents", []):
             us.append((d["name"].split("/")[-1], fb.fs_doc_to_dict(d)))
         return us
-    except Exception:
+    except Exception as e:
+        st.session_state["erro_cache_usuarios"] = str(e)
         return []
 
 def selecionar_usuario(label="Usuário", key="sel_user"):
     us = _usuarios_cache()
     if not us:
-        uid = st.text_input("UID do usuário (novo)", placeholder="ex: teste1", key=key + "_uid")
+        err = st.session_state.pop("erro_cache_usuarios", "")
+        if err:
+            st.warning(f"⚠️ Não consegui listar usuários: {err[:200]}")
+            st.caption("Se o erro for de private_key, atualize os Secrets do Streamlit e clique em 'Rerun' (menu ⋮ → Rerun).")
+        uid = st.text_input("UID do usuário (digitar)", placeholder="ex: lovely_lady", key=key + "_uid")
         return uid.strip() if uid else None
     nomes = [u[0] for u in us]
     idx = st.selectbox(label, nomes, index=0, key=key + "_sel")

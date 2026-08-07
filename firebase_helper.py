@@ -59,25 +59,42 @@ def _access_token():
     signing_input = b64url(header) + "." + b64url(claim)
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import padding
-    # st.secrets (Streamlit Cloud) às vezes quebra as quebras de linha da PEM.
-    # Reconstrói: \\n literal -> \n real, e remove \r.
+    # ====== PEM robusta: reconstrói de QUALQUER mangling ======
+    # st.secrets (Streamlit Cloud) costuma quebrar a private_key:
+    # - \\n literal (2 chars) em vez de quebra real
+    # - key inteira numa linha só (sem quebras)
+    # - espaços/aspas/tabs em volta
+    # Estratégia: extrai só o corpo base64 (entre BEGIN/END), remove tudo que
+    # não é base64, re-quebra em linhas de 64 chars e remonta BEGIN/END.
     pk = sa["private_key"]
-    if "\\n" in pk and "\n" not in pk:
-        pk = pk.replace("\\n", "\n")
-    pk = pk.replace("\\r\\n", "\n").replace("\\r", "\n")
-    if not pk.strip().startswith("-----BEGIN"):
-        pk = pk.strip() + "\n"
-    # Caso TOML de aspas triplas: a key pode vir com \n LITERAIS (2 chars) ou
-    # com quebras reais misturadas. Garante que cada linha começa sem espaços
-    # (PEM exige linhas sem leading space).
-    if "-----BEGIN" in pk:
-        linhas = []
-        for ln in pk.split("\n"):
-            linhas.append(ln.strip())
-        pk = "\n".join(linhas)
-        if not pk.endswith("\n"):
-            pk += "\n"
-    key = serialization.load_pem_private_key(pk.encode(), password=None)
+    if not pk or "PRIVATE KEY" not in pk:
+        raise RuntimeError("private_key ausente ou sem 'PRIVATE KEY' no st.secrets — " 
+                           "recole o bloco do serviceAccountKey.json em Secrets do Streamlit.")
+    # 1) tenta quebras literais primeiro (caso mais comum: \\n dentro de string)
+    if "\\n" in pk:
+        pk = pk.replace("\\r\\n", "\n").replace("\\n", "\n")
+    # 2) remove tudo que não é BEGIN/END/base64 (espaços, aspas, tabs, lixo)
+    import re as _re
+    m = _re.search(r"-----BEGIN ([A-Z ]+?)-----", pk)
+    if not m:
+        raise RuntimeError("PEM sem cabeçalho BEGIN PRIVATE KEY — confira a private_key no st.secrets")
+    hdr = m.group(1)
+    corpo = pk.split(f"-----BEGIN {hdr}-----", 1)[1]
+    corpo = corpo.split(f"-----END {hdr}-----", 1)[0]
+    # mantém só base64 (A-Za-z0-9+/=)
+    corpo = _re.sub(r"[^A-Za-z0-9+/=]", "", corpo)
+    # re-quebra em 64 chars (PEM padrão)
+    linhas = [corpo[i:i+64] for i in range(0, len(corpo), 64)]
+    pk_final = f"-----BEGIN {hdr}-----\n" + "\n".join(linhas) + f"\n-----END {hdr}-----\n"
+    # 3) se ainda falhar, dá erro claro com diagnóstico
+    try:
+        key = serialization.load_pem_private_key(pk_final.encode(), password=None)
+    except Exception as e:
+        raise RuntimeError(
+            f"Falha ao carregar private_key mesmo após reconstrução ({len(corpo)} chars base64). "
+            f"Causa: {e}. Verifique se o st.secrets['firebase']['private_key'] está COMPLETO "
+            f"(começa com '-----BEGIN PRIVATE KEY-----' e termina com '-----END PRIVATE KEY-----')."
+        )
     sig = key.sign(signing_input.encode(), padding.PKCS1v15(), hashes.SHA256())
     jwt = signing_input + "." + base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
     body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=" + jwt
