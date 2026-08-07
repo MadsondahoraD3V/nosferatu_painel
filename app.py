@@ -343,6 +343,31 @@ with aba[5]:
                 _log(f"Falha alerta {uid}: {e}", "erro")
                 st.error(f"Falha: {e}")
 
+    st.divider()
+    st.subheader("🕐 Agendar alerta")
+    st.caption("Agenda no horário escolhido. O app mostra quando estiver na hora (não precisa de push).")
+    ag_uid = st.text_input("Código do usuário (agendar)", key="alg_uid", placeholder="madson")
+    ag_titulo = st.text_input("Título", key="alg_tit", placeholder="Hora da leitura")
+    ag_corpo = st.text_area("Mensagem", key="alg_corpo", placeholder="Está na hora de ler 🩸")
+    ag_data = st.date_input("Data (agendar)", key="alg_data")
+    ag_hora = st.time_input("Hora (agendar)", key="alg_hora")
+    if st.button("📅 Agendar alerta"):
+        import datetime as _dt
+        if not ag_uid or not ag_titulo:
+            st.error("Código e título obrigatórios")
+        else:
+            try:
+                nao_ts = int(_dt.datetime.combine(ag_data, ag_hora).replace(tzinfo=_dt.timezone.utc).timestamp() * 1000)
+                aid = f"{ag_uid}_{int(nao_ts)}"
+                fb.fs_set("alertas", aid, {
+                    "uid": ag_uid, "titulo": ag_titulo, "corpo": ag_corpo or ag_titulo,
+                    "horario_ts": nao_ts, "enviado": False,
+                })
+                _log(f"Alerta agendado p/ {ag_uid} em {ag_data} {ag_hora}", "alerta")
+                st.success(f"Alerta agendado p/ {ag_uid} em {ag_data} {ag_hora}")
+            except Exception as e:
+                st.error(f"Falha ao agendar: {e}")
+
 # ===== Aba Logs =====
 with aba[6]:
     st.subheader("📜 Logs de ações")
