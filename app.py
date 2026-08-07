@@ -80,9 +80,49 @@ with aba[0]:
                 st.caption(f"  ✅ FCM registrado ({d['fcm_token'][:20]}…)")
             else:
                 st.caption("  ⚠️ Sem FCM (app ainda não abriu com Firebase)")
+            # Biblioteca do usuário (do backup livros_json ou array livros)
+            livros_u = d.get("livros") or []
+            if livros_u:
+                with st.expander(f"📚 Biblioteca de {uid} ({len(livros_u)} livros)"):
+                    for lb in livros_u[:60]:
+                        col = lb.get("coluna", "ler")
+                        icone = {"ler": "📕", "lendo": "📖", "lidos": "✅"}.get(col, "📕")
+                        st.markdown(
+                            f"{icone} **{lb.get('titulo','?')}** — {lb.get('autor','')} · "
+                            f"{lb.get('paginasLidas',0)}/{lb.get('paginasTotais',0)}p · "
+                            f"{'lido' if col=='lidos' else 'lendo' if col=='lendo' else 'para ler'}"
+                        )
             st.divider()
     else:
         st.info("Nenhum usuário ainda. Crie abaixo — depois o app faz login com o código.")
+
+    st.subheader("🔑 Editar usuário / senha")
+    with st.form("editar_usuario_form"):
+        e_uid = st.selectbox("Usuário", [u[0] for u in us] if us else [], key="editar_sel")
+        e_nome = st.text_input("Nome (deixe vazio p/ manter)", placeholder="Novo nome")
+        e_senha = st.text_input("Nova senha (deixe vazio p/ manter)", type="password")
+        e_lidos = st.number_input("Limite LIDOS", min_value=1, max_value=500, value=10)
+        e_editar = st.form_submit_button("💾 Salvar alterações")
+        if e_editar:
+            if not e_uid:
+                st.error("Selecione usuário")
+            else:
+                try:
+                    u = fb.usuario(e_uid)
+                    if not u.get("uid"):
+                        u = {"uid": e_uid}
+                    dados = {**u, "lidos_max": int(e_lidos)}
+                    if e_nome.strip():
+                        dados["nome"] = e_nome.strip()
+                    if e_senha:
+                        h, salt = fb._hash_senha(e_senha)
+                        dados["senha_hash"] = h
+                        dados["senha_salt"] = salt
+                    fb.salvar_usuario(e_uid, dados)
+                    _usuarios_cache.clear()
+                    st.success(f"Usuário '{e_uid}' atualizado")
+                except Exception as ex:
+                    st.error(f"Falha: {ex}")
 
     st.subheader("➕ Criar usuário")
     with st.form("criar_usuario_form"):
@@ -104,19 +144,39 @@ with aba[0]:
 
 # ===== Aba Metas =====
 with aba[1]:
-    st.subheader("🎯 Metas")
+    st.subheader("🎯 Metas com prazo")
+    st.caption("Cadastre uma meta de páginas/dia com validade. A usuária adere no app; venceu o prazo sem aderir, some. Venceu cumprindo → ganha página do grimório.")
     uid = selecionar_usuario("Usuário (meta)", key="meta")
-    titulo = st.text_input("Título da meta", placeholder="Meta da semana")
-    corpo = st.text_area("Descrição da meta", placeholder="Leia 50 páginas até sexta!", key="meta_corpo")
-    if st.button("🚀 Disparar meta"):
+    m_titulo = st.text_input("Título da meta", placeholder="Meta da semana", key="meta_titulo")
+    m_corpo = st.text_area("Descrição", placeholder="Leia 15 páginas por dia!", key="meta_corpo")
+    m_paginas = st.number_input("Páginas por dia", min_value=1, max_value=500, value=15, key="meta_paginas")
+    m_dias = st.number_input("Válida por (dias)", min_value=1, max_value=90, value=7, key="meta_dias")
+    if st.button("📌 Cadastrar meta"):
         if not uid: st.error("Informe usuário")
-        elif not titulo: st.error("Título obrigatório")
+        elif not m_titulo: st.error("Título obrigatório")
         else:
             try:
-                fb.disparar_meta(uid, titulo, corpo or titulo)
-                st.success(f"Meta enviada p/ {uid} — popup no topo do celular")
+                import time as _t
+                meta_id = f"{uid}_{int(_t.time())}"
+                fb.fs_set("metas", meta_id, {
+                    "uid": uid, "titulo": m_titulo, "descricao": m_corpo or m_titulo,
+                    "paginas_por_dia": int(m_paginas), "validade_ts": int(_t.time()) + int(m_dias) * 86400,
+                    "criada_ts": int(_t.time()), "aderida": False,
+                })
+                st.success(f"Meta cadastrada p/ {uid} — válida por {int(m_dias)} dias")
             except Exception as e:
                 st.error(f"Falha: {e}")
+
+    st.subheader("📋 Metas ativas")
+    try:
+        metas = fb.fs_get("metas")
+        for d in metas.get("documents", []):
+            m = fb.fs_doc_to_dict(d)
+            if m.get("uid") != (uid or ""): continue
+            st.markdown(f"**{m.get('titulo','?')}** · {m.get('paginas_por_dia','?')} pág/dia · "
+                        f"aderida: {'✅' if m.get('aderida') else '⏳'} · válida até {_t.strftime('%d/%m', _t.localtime(m.get('validade_ts', 0)))}")
+    except Exception as e:
+        st.error(f"Erro metas: {e}")
 
 # ===== Aba Desafios =====
 with aba[2]:

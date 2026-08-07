@@ -64,9 +64,19 @@ def _access_token():
     pk = sa["private_key"]
     if "\\n" in pk and "\n" not in pk:
         pk = pk.replace("\\n", "\n")
-    pk = pk.replace("\r\n", "\n").replace("\r", "\n")
+    pk = pk.replace("\\r\\n", "\n").replace("\\r", "\n")
     if not pk.strip().startswith("-----BEGIN"):
         pk = pk.strip() + "\n"
+    # Caso TOML de aspas triplas: a key pode vir com \n LITERAIS (2 chars) ou
+    # com quebras reais misturadas. Garante que cada linha começa sem espaços
+    # (PEM exige linhas sem leading space).
+    if "-----BEGIN" in pk:
+        linhas = []
+        for ln in pk.split("\n"):
+            linhas.append(ln.strip())
+        pk = "\n".join(linhas)
+        if not pk.endswith("\n"):
+            pk += "\n"
     key = serialization.load_pem_private_key(pk.encode(), password=None)
     sig = key.sign(signing_input.encode(), padding.PKCS1v15(), hashes.SHA256())
     jwt = signing_input + "." + base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
