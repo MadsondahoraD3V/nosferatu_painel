@@ -57,13 +57,13 @@ def _usuarios_cache():
     except Exception:
         return []
 
-def selecionar_usuario(label="Usuário"):
+def selecionar_usuario(label="Usuário", key="sel_user"):
     us = _usuarios_cache()
     if not us:
-        uid = st.text_input("UID do usuário (novo)", placeholder="ex: teste1")
+        uid = st.text_input("UID do usuário (novo)", placeholder="ex: teste1", key=key + "_uid")
         return uid.strip() if uid else None
     nomes = [u[0] for u in us]
-    idx = st.selectbox(label, nomes, index=0)
+    idx = st.selectbox(label, nomes, index=0, key=key + "_sel")
     return idx
 
 # ===== Aba Usuários =====
@@ -105,7 +105,7 @@ with aba[0]:
 # ===== Aba Metas =====
 with aba[1]:
     st.subheader("🎯 Metas")
-    uid = selecionar_usuario("Usuário (meta)")
+    uid = selecionar_usuario("Usuário (meta)", key="meta")
     titulo = st.text_input("Título da meta", placeholder="Meta da semana")
     corpo = st.text_area("Descrição", placeholder="Leia 50 páginas até sexta!")
     if st.button("🚀 Disparar meta"):
@@ -121,7 +121,7 @@ with aba[1]:
 # ===== Aba Desafios =====
 with aba[2]:
     st.subheader("⚔️ Desafios")
-    uid = selecionar_usuario("Usuário (desafio)")
+    uid = selecionar_usuario("Usuário (desafio)", key="desafio")
     d_titulo = st.text_input("Título do desafio", placeholder="Desafio do íncubo")
     d_corpo = st.text_area("Descrição", placeholder="Complete 3 livros de true crime!")
     if st.button("⚔️ Disparar desafio"):
@@ -137,7 +137,7 @@ with aba[2]:
 # ===== Aba Íncubo =====
 with aba[3]:
     st.subheader("🜏 Íncubo — invocação remota")
-    uid = selecionar_usuario("Usuário (íncubo)")
+    uid = selecionar_usuario("Usuário (íncubo)", key="incubo")
     modo = st.radio("Modo de invocação", ["Agora (abre o app direto no íncubo)", "Próxima abertura (usuária vê no próximo open)"])
     if st.button("🜏 INVOCAR"):
         if not uid: st.error("Informe usuário")
@@ -159,7 +159,7 @@ with aba[3]:
 # ===== Aba Limites/Bloqueios =====
 with aba[4]:
     st.subheader("🔒 Limites e bloqueios por usuário")
-    uid = selecionar_usuario("Usuário (limites)")
+    uid = selecionar_usuario("Usuário (limites)", key="limites")
     if uid:
         u = fb.usuario(uid)
         st.markdown(f"Editando: **{uid}**")
@@ -183,7 +183,7 @@ with aba[4]:
 # ===== Aba Alertas =====
 with aba[5]:
     st.subheader("📢 Alertas gerais")
-    uid = selecionar_usuario("Usuário (alerta)")
+    uid = selecionar_usuario("Usuário (alerta)", key="alerta")
     a_titulo = st.text_input("Título do alerta", placeholder="Lembrete")
     a_corpo = st.text_area("Mensagem", placeholder="Não esqueça sua meta de páginas de hoje!")
     if st.button("🔔 Enviar alerta"):
