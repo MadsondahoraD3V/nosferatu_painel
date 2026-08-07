@@ -79,21 +79,38 @@ def _access_token():
     if not m:
         raise RuntimeError("PEM sem cabeçalho BEGIN PRIVATE KEY — confira a private_key no st.secrets")
     hdr = m.group(1)
-    corpo = pk.split(f"-----BEGIN {hdr}-----", 1)[1]
-    corpo = corpo.split(f"-----END {hdr}-----", 1)[0]
+    # acha o END de forma tolerante (espaços extras, \r, variações)
+    m_end = _re.search(r"-----END\s*" + _re.escape(hdr) + r"\s*-----", pk)
+    corpo = pk[m.end():m_end.start()] if m_end else pk[m.end():]
     # mantém só base64 (A-Za-z0-9+/=)
     corpo = _re.sub(r"[^A-Za-z0-9+/=]", "", corpo)
+    # se faltar padding '=', restaura (tamanho múltiplo de 4)
+    corpo += "=" * ((4 - len(corpo) % 4) % 4)
     # re-quebra em 64 chars (PEM padrão)
-    linhas = [corpo[i:i+64] for i in range(0, len(corpo), 64)]
-    pk_final = f"-----BEGIN {hdr}-----\n" + "\n".join(linhas) + f"\n-----END {hdr}-----\n"
-    # 3) se ainda falhar, dá erro claro com diagnóstico
+    def _montar(b):
+        linhas = [b[i:i+64] for i in range(0, len(b), 64)]
+        return f"-----BEGIN {hdr}-----\n" + "\n".join(linhas) + f"\n-----END {hdr}-----\n"
+    # tenta direto; se falhar (ex: lixo no fim → "extra data"), corta do fim em
+    # blocos de 4 até achar o maior prefixo que parseia como chave válida
+    key = None
     try:
-        key = serialization.load_pem_private_key(pk_final.encode(), password=None)
-    except Exception as e:
+        key = serialization.load_pem_private_key(_montar(corpo).encode(), password=None)
+    except Exception:
+        for corte in range(len(corpo) - (len(corpo) % 4), 0, -4):
+            try:
+                key = serialization.load_pem_private_key(_montar(corpo[:corte]).encode(), password=None)
+                break
+            except Exception:
+                continue
+    if key is None:
         raise RuntimeError(
-            f"Falha ao carregar private_key mesmo após reconstrução ({len(corpo)} chars base64). "
-            f"Causa: {e}. Verifique se o st.secrets['firebase']['private_key'] está COMPLETO "
-            f"(começa com '-----BEGIN PRIVATE KEY-----' e termina com '-----END PRIVATE KEY-----')."
+            f"Falha ao carregar private_key mesmo após reconstrução ({len(corpo)} chars base64; "
+            f"a chave completa desta SA tem 1624 chars). Início: {corpo[:12]}… Fim: …{corpo[-12:]}. "
+            f"Provável: chave colada incompleta (faltando bytes) ou de outra service account. "
+            f"Ação: abra o serviceAccountKey.json original e RECOLE a private_key INTEIRA "
+            f"(deve começar com -----BEGIN PRIVATE KEY----- e ter ~1704 caracteres, "
+            f"1624 sem as quebras) no Secrets do Streamlit → firebase.private_key "
+            f"(use aspas triplas \"\"\")."
         )
     sig = key.sign(signing_input.encode(), padding.PKCS1v15(), hashes.SHA256())
     jwt = signing_input + "." + base64.urlsafe_b64encode(sig).rstrip(b"=").decode()

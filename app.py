@@ -68,7 +68,7 @@ def selecionar_usuario(label="Usuário", key="sel_user"):
         uid = st.text_input("UID do usuário (digitar)", placeholder="ex: lovely_lady", key=key + "_uid")
         return uid.strip() if uid else None
     nomes = [u[0] for u in us]
-    idx = st.selectbox(label, nomes, index=0, key=key + "_sel")
+    idx = st.selectbox(f"{label} ({len(nomes)} cadastrados)", nomes, index=0, key=key + "_sel")
     return idx
 
 # ===== Aba Usuários =====
