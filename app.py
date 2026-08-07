@@ -333,8 +333,15 @@ with aba[5]:
                 u = fb.usuario(uid)
                 tok = u.get("fcm_token", "")
                 if not tok:
-                    _log(f"Alerta sem FCM p/ {uid}", "erro")
-                    st.error("Sem FCM registrado")
+                    _log(f"Alerta sem FCM p/ {uid} → grava em alertas (pull)", "alerta")
+                    st.info("Sem FCM registrado — alerta entra na fila de pull (app puxa em ~15s)")
+                    import time as _t
+                    aid = f"{uid}_{int(_t.time() * 1000)}"
+                    fb.fs_set("alertas", aid, {
+                        "uid": uid, "titulo": a_titulo, "corpo": a_corpo or a_titulo,
+                        "horario_ts": int(_t.time() * 1000), "enviado": False,
+                    })
+                    st.success("Alerta na fila (sem FCM, via pull)")
                 else:
                     fb.enviar_push(tok, a_titulo, a_corpo or a_titulo, tipo="aviso")
                     _log(f"Alerta enviado p/ {uid}: {a_titulo}", "alerta")
