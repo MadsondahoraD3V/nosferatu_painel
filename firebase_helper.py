@@ -68,8 +68,16 @@ def _access_token():
     # não é base64, re-quebra em linhas de 64 chars e remonta BEGIN/END.
     pk = sa["private_key"]
     if not pk or "PRIVATE KEY" not in pk:
-        raise RuntimeError("private_key ausente ou sem 'PRIVATE KEY' no st.secrets — " 
+        raise RuntimeError("private_key ausente ou sem 'PRIVATE KEY' no st.secrets — "
                            "recole o bloco do serviceAccountKey.json em Secrets do Streamlit.")
+    # chave com 2 blocos (duas chaves coladas) → erro claro
+    if pk.count("-----BEGIN") > 1:
+        raise RuntimeError(
+            "private_key no st.secrets contém MAIS DE UM bloco 'BEGIN PRIVATE KEY' "
+            "(duas chaves coladas, provavelmente uma service account antiga + nova). "
+            "Ação: no Secrets do Streamlit, substitua firebase.private_key pela chave "
+            "ÚNICA do serviceAccountKey.json atual (aspas triplas \"\"\")."
+        )
     # 1) tenta quebras literais primeiro (caso mais comum: \\n dentro de string)
     if "\\n" in pk:
         pk = pk.replace("\\r\\n", "\n").replace("\\n", "\n")
@@ -151,11 +159,12 @@ def _access_token():
         raise RuntimeError(
             f"Falha ao carregar private_key mesmo após reconstrução ({len(corpo)} chars base64; "
             f"a chave completa desta SA tem 1624 chars). Início: {corpo[:12]}… Fim: …{corpo[-12:]}. "
-            f"Provável: chave colada incompleta (faltando bytes) ou de outra service account. "
-            f"Ação: abra o serviceAccountKey.json original e RECOLE a private_key INTEIRA "
-            f"(deve começar com -----BEGIN PRIVATE KEY----- e ter ~1704 caracteres, "
-            f"1624 sem as quebras) no Secrets do Streamlit → firebase.private_key "
-            f"(use aspas triplas \"\"\")."
+            f"A chave no st.secrets NÃO corresponde a nenhuma chave válida do projeto "
+            f"(provavelmente corrompida na colagem — alguns caracteres alterados). "
+            f"Ação DEFINITIVA: no Secrets do Streamlit → firebase.private_key, apague o valor atual "
+            f"e cole a chave INTEIRA do arquivo serviceAccountKey.json "
+            f"(C:\\Users\\Madson\\nosferatu_app\\firebase\\serviceAccountKey.json), "
+            f"usando aspas triplas \"\"\" ... \"\"\". Salve e o painel recarrega sozinho."
         )
     sig = key.sign(signing_input.encode(), padding.PKCS1v15(), hashes.SHA256())
     jwt = signing_input + "." + base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
