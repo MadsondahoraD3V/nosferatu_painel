@@ -90,18 +90,63 @@ def _access_token():
     def _montar(b):
         linhas = [b[i:i+64] for i in range(0, len(b), 64)]
         return f"-----BEGIN {hdr}-----\n" + "\n".join(linhas) + f"\n-----END {hdr}-----\n"
-    # tenta direto; se falhar (ex: lixo no fim → "extra data"), corta do fim em
-    # blocos de 4 até achar o maior prefixo que parseia como chave válida
+    # tenta direto; se falhar, auto-cura:
+    # 1) decodifica base64 -> DER, e se o DER tiver lixo no MEIO ou FIM,
+    #    trunca no tamanho declarado pelo próprio ASN.1 (primeiro SEQUENCE),
+    #    o que remove qualquer lixo extra de forma exata.
     key = None
     try:
         key = serialization.load_pem_private_key(_montar(corpo).encode(), password=None)
     except Exception:
-        for corte in range(len(corpo) - (len(corpo) % 4), 0, -4):
-            try:
-                key = serialization.load_pem_private_key(_montar(corpo[:corte]).encode(), password=None)
+        try:
+            import base64 as _b64
+            der = _b64.b64decode(corpo, validate=False)
+            if der and der[0] == 0x30:  # SEQUENCE
+                # tamanho do SEQUENCE (BER/DER long form)
+                ln = der[1]
+                off = 2
+                if ln & 0x80:
+                    n = ln & 0x7f
+                    ln = int.from_bytes(der[2:2+n], "big")
+                    off = 2 + n
+                total = off + ln
+                if total < len(der):
+                    # lixo no fim: trunca
+                    der = der[:total]
+                key = serialization.load_der_private_key(der, password=None)
+        except Exception:
+            key = None
+    if key is None:
+        # 2) força bruta limitada: lixo de 4/8 chars no MEIO do corpo
+        #    (ex: texto colado no meio da chave no secrets). Remove bloco em
+        #    cada posição (passo 4) e tenta parsear. Acha em ~2-3s.
+        import time as _time
+        t0 = _time.time()
+        achou = False
+        for bloco in (4, 8, 12):
+            if achou:
                 break
-            except Exception:
-                continue
+            for i in range(0, len(corpo) - bloco + 1, 4):
+                if _time.time() - t0 > 15:
+                    break
+                cand = corpo[:i] + corpo[i+bloco:]
+                try:
+                    key = serialization.load_pem_private_key(_montar(cand).encode(), password=None)
+                    achou = True
+                    break
+                except Exception:
+                    continue
+    if key is None:
+        # 3) último recurso: corta do fim em blocos de 4 (lixo no fim simples)
+        try:
+            for corte in range(len(corpo) - (len(corpo) % 4), 0, -4):
+                try:
+                    key = serialization.load_pem_private_key(_montar(corpo[:corte]).encode(), password=None)
+                    break
+                except Exception:
+                    continue
+        except Exception:
+            key = None
     if key is None:
         raise RuntimeError(
             f"Falha ao carregar private_key mesmo após reconstrução ({len(corpo)} chars base64; "
