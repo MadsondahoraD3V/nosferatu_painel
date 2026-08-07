@@ -59,7 +59,15 @@ def _access_token():
     signing_input = b64url(header) + "." + b64url(claim)
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import padding
-    key = serialization.load_pem_private_key(sa["private_key"].encode(), password=None)
+    # st.secrets (Streamlit Cloud) às vezes quebra as quebras de linha da PEM.
+    # Reconstrói: \\n literal -> \n real, e remove \r.
+    pk = sa["private_key"]
+    if "\\n" in pk and "\n" not in pk:
+        pk = pk.replace("\\n", "\n")
+    pk = pk.replace("\r\n", "\n").replace("\r", "\n")
+    if not pk.strip().startswith("-----BEGIN"):
+        pk = pk.strip() + "\n"
+    key = serialization.load_pem_private_key(pk.encode(), password=None)
     sig = key.sign(signing_input.encode(), padding.PKCS1v15(), hashes.SHA256())
     jwt = signing_input + "." + base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
     body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=" + jwt
