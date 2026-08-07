@@ -107,7 +107,7 @@ with aba[1]:
     st.subheader("🎯 Metas")
     uid = selecionar_usuario("Usuário (meta)", key="meta")
     titulo = st.text_input("Título da meta", placeholder="Meta da semana")
-    corpo = st.text_area("Descrição", placeholder="Leia 50 páginas até sexta!")
+    corpo = st.text_area("Descrição da meta", placeholder="Leia 50 páginas até sexta!", key="meta_corpo")
     if st.button("🚀 Disparar meta"):
         if not uid: st.error("Informe usuário")
         elif not titulo: st.error("Título obrigatório")
@@ -123,7 +123,7 @@ with aba[2]:
     st.subheader("⚔️ Desafios")
     uid = selecionar_usuario("Usuário (desafio)", key="desafio")
     d_titulo = st.text_input("Título do desafio", placeholder="Desafio do íncubo")
-    d_corpo = st.text_area("Descrição", placeholder="Complete 3 livros de true crime!")
+    d_corpo = st.text_area("Descrição do desafio", placeholder="Complete 3 livros de true crime!", key="desafio_corpo")
     if st.button("⚔️ Disparar desafio"):
         if not uid: st.error("Informe usuário")
         elif not d_titulo: st.error("Título obrigatório")
