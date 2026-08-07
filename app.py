@@ -226,8 +226,9 @@ with aba[1]:
         else:
             try:
                 import time as _t
-                meta_id = f"{uid}_{int(_t.time())}"
-                fb.fs_set("metas", meta_id, {
+                # id FIXO = uid: app lê doc único (regras Firestore: uid == resource.data.uid;
+                # lista é bloqueada p/ token anônimo). 1 meta ativa por usuário.
+                fb.fs_set("metas", uid, {
                     "uid": uid, "titulo": m_titulo, "descricao": m_corpo or m_titulo,
                     "paginas_por_dia": int(m_paginas), "validade_ts": int(_t.time()) + int(m_dias) * 86400,
                     "criada_ts": int(_t.time()), "aderida": False,
@@ -336,8 +337,8 @@ with aba[5]:
                     _log(f"Alerta sem FCM p/ {uid} → grava em alertas (pull)", "alerta")
                     st.info("Sem FCM registrado — alerta entra na fila de pull (app puxa em ~15s)")
                     import time as _t
-                    aid = f"{uid}_{int(_t.time() * 1000)}"
-                    fb.fs_set("alertas", aid, {
+                    # id FIXO = uid: app lê doc único (lista é bloqueada p/ token anônimo)
+                    fb.fs_set("alertas", uid, {
                         "uid": uid, "titulo": a_titulo, "corpo": a_corpo or a_titulo,
                         "horario_ts": int(_t.time() * 1000), "enviado": False,
                     })
@@ -365,8 +366,8 @@ with aba[5]:
         else:
             try:
                 nao_ts = int(_dt.datetime.combine(ag_data, ag_hora).replace(tzinfo=_dt.timezone.utc).timestamp() * 1000)
-                aid = f"{ag_uid}_{int(nao_ts)}"
-                fb.fs_set("alertas", aid, {
+                # id FIXO = uid: app lê doc único (lista bloqueada p/ token anônimo)
+                fb.fs_set("alertas", ag_uid, {
                     "uid": ag_uid, "titulo": ag_titulo, "corpo": ag_corpo or ag_titulo,
                     "horario_ts": nao_ts, "enviado": False,
                 })
