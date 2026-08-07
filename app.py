@@ -32,7 +32,20 @@ checar_login()
 st.title("🩸 Nosferatu — Controle Remoto")
 st.caption("Painel admin · dados seguros · service account só no servidor")
 
-aba = st.tabs(["📊 Usuários", "🎯 Metas", "⚔️ Desafios", "🜏 Íncubo", "🔒 Limites/Bloqueios", "📢 Alertas"])
+aba = st.tabs(["📊 Usuários", "🎯 Metas", "⚔️ Desafios", "🜏 Íncubo", "🔒 Limites/Bloqueios", "📢 Alertas", "📜 Logs"])
+
+# ===== Logs (histórico de ações do painel, em aba própria) =====
+if "logs" not in st.session_state:
+    st.session_state.logs = []
+
+def _log(msg, tipo="info"):
+    """Registra ação no histórico (aba Logs) — não polui a visualização."""
+    import datetime as _dt
+    st.session_state.logs.append(
+        f"[{_dt.datetime.now().strftime('%d/%m %H:%M:%S')}] {tipo.upper()}: {msg}"
+    )
+    if len(st.session_state.logs) > 500:
+        st.session_state.logs = st.session_state.logs[-500:]
 
 # ===== Helper UI =====
 def listar_usuarios():
@@ -41,11 +54,15 @@ def listar_usuarios():
 def _mover_livro_painel(uid, livro, nova_coluna):
     """Muda a coluna de um livro do usuário no Firestore (livros_json + livros)."""
     try:
+        import json as _json
         u = fb.usuario(uid)
-        livros = list(u.get("livros") or [])
+        livros = u.get("livros") or []
+        if isinstance(livros, str):
+            livros = _json.loads(livros) if livros.strip() else []
+        livros = list(livros)
         mudou = False
         for lb in livros:
-            if lb.get("id") == livro.get("id"):
+            if isinstance(lb, dict) and lb.get("id") == livro.get("id"):
                 lb["coluna"] = nova_coluna
                 mudou = True
                 break
@@ -53,19 +70,20 @@ def _mover_livro_painel(uid, livro, nova_coluna):
             # também atualiza livros_json (backup que o app restaura)
             j = []
             try:
-                import json as _json
                 j = _json.loads(u.get("livros_json") or "[]")
             except Exception:
                 j = []
-            for lb in j:
-                if lb.get("id") == livro.get("id"):
-                    lb["coluna"] = nova_coluna
-                    break
+            if isinstance(j, list):
+                for lb in j:
+                    if isinstance(lb, dict) and lb.get("id") == livro.get("id"):
+                        lb["coluna"] = nova_coluna
+                        break
             dados = {**u, "livros": livros}
             if j:
                 dados["livros_json"] = _json.dumps(j, ensure_ascii=False)
             fb.salvar_usuario(uid, dados)
             _usuarios_cache.clear()
+            _log(f"Livro '{livro.get('titulo','?')}' movido p/ {nova_coluna} (usuário {uid})", "livro")
             st.success(f"📖 '{livro.get('titulo','?')}' movido para {nova_coluna}")
         else:
             st.warning("Livro não encontrado no doc do usuário (sync ainda não subiu?)")
@@ -113,6 +131,13 @@ with aba[0]:
                 st.caption("  ⚠️ Sem FCM (app ainda não abriu com Firebase)")
             # Biblioteca do usuário (do backup livros_json ou array livros)
             livros_u = d.get("livros") or []
+            if isinstance(livros_u, str):
+                # doc antigo: livros salvo como string JSON — converte
+                try:
+                    import json as _json
+                    livros_u = _json.loads(livros_u) if livros_u.strip() else []
+                except Exception:
+                    livros_u = []
             if livros_u:
                 with st.expander(f"📚 Biblioteca de {uid} ({len(livros_u)} livros)"):
                     for lb in livros_u[:60]:
@@ -160,8 +185,10 @@ with aba[0]:
                         dados["senha_salt"] = salt
                     fb.salvar_usuario(e_uid, dados)
                     _usuarios_cache.clear()
+                    _log(f"Usuário '{e_uid}' atualizado (nome={e_nome.strip() or 'mantido'}, lidos_max={int(e_lidos)})", "usuario")
                     st.success(f"Usuário '{e_uid}' atualizado")
                 except Exception as ex:
+                    _log(f"Falha editar {e_uid}: {ex}", "erro")
                     st.error(f"Falha: {ex}")
 
     st.subheader("➕ Criar usuário")
@@ -178,8 +205,10 @@ with aba[0]:
                 try:
                     fb.criar_usuario(c_codigo.strip(), c_nome.strip() or c_codigo.strip(), c_senha, int(c_lidos))
                     _usuarios_cache.clear()
+                    _log(f"Usuário criado: {c_codigo.strip()} ({c_nome.strip() or c_codigo.strip()}, lidos_max={int(c_lidos)})", "usuario")
                     st.success(f"Usuário '{c_codigo}' criado — já pode logar no app")
                 except Exception as e:
+                    _log(f"Falha criar {c_codigo}: {e}", "erro")
                     st.error(f"Falha: {e}")
 
 # ===== Aba Metas =====
@@ -203,8 +232,10 @@ with aba[1]:
                     "paginas_por_dia": int(m_paginas), "validade_ts": int(_t.time()) + int(m_dias) * 86400,
                     "criada_ts": int(_t.time()), "aderida": False,
                 })
-                st.success(f"Meta cadastrada p/ {uid} — válida por {int(m_dias)} dias")
+                _log(f"Meta cadastrada p/ {uid}: {m_titulo} ({int(m_paginas)} pág/dia, {int(m_dias)}d)", "meta")
+                st.success(f"Meta cadastrada p/ {uid}")
             except Exception as e:
+                _log(f"Falha meta {uid}: {e}", "erro")
                 st.error(f"Falha: {e}")
 
     st.subheader("📋 Metas ativas")
@@ -230,8 +261,10 @@ with aba[2]:
         else:
             try:
                 fb.disparar_desafio(uid, d_titulo, d_corpo or d_titulo)
+                _log(f"Desafio enviado p/ {uid}: {d_titulo}", "desafio")
                 st.success(f"Desafio enviado p/ {uid}")
             except Exception as e:
+                _log(f"Falha desafio {uid}: {e}", "erro")
                 st.error(f"Falha: {e}")
 
 # ===== Aba Íncubo =====
@@ -246,14 +279,19 @@ with aba[3]:
                 u = fb.usuario(uid)
                 tok = u.get("fcm_token", "")
                 if modo.startswith("Agora"):
-                    if not tok: st.error("Sem FCM registrado")
+                    if not tok:
+                        _log(f"Invocação AGORA sem FCM p/ {uid}", "erro")
+                        st.error("Sem FCM registrado")
                     else:
                         fb.enviar_push(tok, "🜏 O íncubo te chama…", "Toque para selar o pacto.", tipo="incubo", incubo="agora")
+                        _log(f"Íncubo invocado AGORA p/ {uid}", "incubo")
                         st.success("Íncubo invocado AGORA — popup desceu no celular")
                 else:
                     fb.registrar_incubo_proxima_abertura(uid)
+                    _log(f"Íncubo marcado p/ PRÓXIMA ABERTURA p/ {uid}", "incubo")
                     st.success("Íncubo marcado p/ PRÓXIMA ABERTURA — pacto selado quando abrir")
             except Exception as e:
+                _log(f"Falha íncubo {uid}: {e}", "erro")
                 st.error(f"Falha: {e}")
 
 # ===== Aba Limites/Bloqueios =====
@@ -278,6 +316,7 @@ with aba[4]:
                 "ativo": bool(ativo),
             })
             _usuarios_cache.clear()
+            _log(f"Limites salvos p/ {uid}: lidos_max={int(lidos_max)}, grimorio={grimorio}, ativo={bool(ativo)}", "limites")
             st.success("Limites salvos — app aplica na próxima sincronização")
 
 # ===== Aba Alertas =====
@@ -293,12 +332,28 @@ with aba[5]:
             try:
                 u = fb.usuario(uid)
                 tok = u.get("fcm_token", "")
-                if not tok: st.error("Sem FCM registrado")
+                if not tok:
+                    _log(f"Alerta sem FCM p/ {uid}", "erro")
+                    st.error("Sem FCM registrado")
                 else:
                     fb.enviar_push(tok, a_titulo, a_corpo or a_titulo, tipo="aviso")
+                    _log(f"Alerta enviado p/ {uid}: {a_titulo}", "alerta")
                     st.success("Alerta enviado")
             except Exception as e:
+                _log(f"Falha alerta {uid}: {e}", "erro")
                 st.error(f"Falha: {e}")
+
+# ===== Aba Logs =====
+with aba[6]:
+    st.subheader("📜 Logs de ações")
+    st.caption("Histórico do que foi feito no painel (últimas 500). Não polui as abas de uso.")
+    if not st.session_state.logs:
+        st.info("Nenhuma ação registrada ainda.")
+    for l in st.session_state.logs[::-1]:
+        st.code(l, language=None)
+    if st.button("🧹 Limpar logs"):
+        st.session_state.logs = []
+        st.rerun()
 
 st.divider()
 st.caption("🔒 Service account protegida — nunca versionar serviceAccountKey.json no GitHub.")

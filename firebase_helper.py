@@ -211,6 +211,14 @@ def fs_set(collection, doc_id, data, merge=True):
             fields[k] = {"integerValue": str(v)}
         elif isinstance(v, float):
             fields[k] = {"doubleValue": v}
+        elif isinstance(v, list):
+            fields[k] = {
+                "arrayValue": {
+                    "values": [_to_value(x) for x in v]
+                }
+            } if v else {"arrayValue": {"values": []}}
+        elif isinstance(v, dict):
+            fields[k] = {"mapValue": {"fields": _to_fields(v)}}
         else:
             fields[k] = {"stringValue": str(v)}
     # Verifica se o doc existe: se não, usa POST (create) em vez de PATCH (update)
@@ -224,6 +232,22 @@ def fs_set(collection, doc_id, data, merge=True):
         return _api(url, {"fields": fields}, method="POST")
     url = f"{base}/{collection}/{doc_id}?" + "&".join(f"updateMask.fieldPaths={k}" for k in data.keys()) if merge else f"{base}/{collection}/{doc_id}"
     return _api(url, {"fields": fields}, method="PATCH" if merge else "POST")
+
+def _to_value(v):
+    if isinstance(v, bool):
+        return {"booleanValue": v}
+    if isinstance(v, int):
+        return {"integerValue": str(v)}
+    if isinstance(v, float):
+        return {"doubleValue": v}
+    if isinstance(v, list):
+        return {"arrayValue": {"values": [_to_value(x) for x in v]}} if v else {"arrayValue": {"values": []}}
+    if isinstance(v, dict):
+        return {"mapValue": {"fields": _to_fields(v)}}
+    return {"stringValue": str(v)}
+
+def _to_fields(d):
+    return {k: _to_value(v) for k, v in d.items()}
 
 def fs_delete(collection, doc_id):
     base = f"https://firestore.googleapis.com/v1/projects/{project_id()}/databases/nosferatu-database/documents"
