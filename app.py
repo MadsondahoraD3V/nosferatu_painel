@@ -32,7 +32,7 @@ checar_login()
 st.title("🩸 Nosferatu — Controle Remoto")
 st.caption("Painel admin · dados seguros · service account só no servidor")
 
-aba = st.tabs(["📊 Usuários", "🎯 Metas", "⚔️ Desafios", "🎁 Prêmios", "🜏 Íncubo", "🔒 Limites/Bloqueios", "📢 Alertas", "📜 Logs"])
+aba = st.tabs(["📊 Usuários", "🎯 Metas", "⚔️ Desafios", "🎁 Prêmios", "🜏 Íncubo", "📚 Biblioteca", "🔒 Limites/Bloqueios", "📢 Alertas", "📜 Logs"])
 
 # ===== Logs (histórico de ações do painel, em aba própria) =====
 if "logs" not in st.session_state:
@@ -448,6 +448,37 @@ with aba[4]:
 
 # ===== Aba Limites/Bloqueios =====
 with aba[5]:
+    st.subheader("📚 Biblioteca — coleção oficial de livros")
+    st.caption("Base de auto-identificação: paginação exata, capas e categorias. O app trava o total de páginas para livros desta coleção (anti-fraude de metas).")
+    try:
+        _resp = fb.fs_get("biblioteca")
+        docs = (_resp or {}).get("documents", []) if isinstance(_resp, dict) else []
+        biblio = [fb.fs_doc_to_dict(d) for d in docs]
+        total_b = len(biblio)
+        com_pag = sum(1 for b in biblio if (b.get("paginas_totais") or 0) > 0)
+        com_capa = sum(1 for b in biblio if b.get("capa_path"))
+        manuais = sum(1 for b in biblio if b.get("status") == "manual")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Livros", total_b)
+        c2.metric("Com paginação", com_pag)
+        c3.metric("Com capa", com_capa)
+        c4.metric("Manual (sem dado)", manuais)
+        busca = st.text_input("🔎 Buscar livro", key="bib_busca", placeholder="título ou autor…")
+        mostrar = biblio
+        if busca:
+            mostrar = [b for b in biblio if busca.lower() in ((b.get("titulo","") + " " + b.get("autor","")).lower())]
+        with st.container(border=True):
+            for b in mostrar[:80]:
+                cols = st.columns([3, 2, 1, 1, 1])
+                cols[0].markdown("**" + str(b.get("titulo","")) + "**\n" + str(b.get("autor","")))
+                cols[1].caption("📖 " + str(b.get("paginas_totais") or "—") + " págs · " + str(b.get("categoria","")))
+                cols[2].markdown("🖼️" if b.get("capa_path") else "·")
+                cols[3].markdown("✅" if b.get("status") == "ok_capa" else ("⏳" if b.get("status") == "ok_sem_capa" else "⚠️"))
+                cols[4].markdown("`" + str(b.get("fonte_validacao",""))[:18] + "`")
+    except Exception as e:
+        st.warning(f"Coleção biblioteca ainda não existe no Firestore — rode o deploy: {e}")
+
+with aba[6]:
     st.subheader("🔒 Limites e bloqueios por usuário")
     uid = selecionar_usuario("Usuário (limites)", key="limites")
     if uid:
