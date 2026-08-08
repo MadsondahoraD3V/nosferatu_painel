@@ -349,3 +349,64 @@ def disparar_desafio(uid, titulo, corpo):
         raise RuntimeError("Usuário sem fcm_token registrado (app ainda não abriu com Firebase).")
     enviar_push(tok, titulo, corpo, tipo="desafio")
     return True
+
+# ===== Prêmios (catálogo dinâmico) =====
+def premiacoes_default():
+    """Catálogo inicial de prêmios (página do grimório é padrão)."""
+    return [
+        {"nome": "📄 Página do Grimório", "tipo": "pagina_grimorio", "valor": 1},
+        {"nome": "🧴 Hidratante", "tipo": "item", "valor": 0},
+        {"nome": "🎁 Shopee R$10", "tipo": "item", "valor": 10},
+        {"nome": "🛍️ Shopee R$20", "tipo": "item", "valor": 20},
+        {"nome": "💳 Shopee R$50", "tipo": "item", "valor": 50},
+        {"nome": "🧼 Skin care 1", "tipo": "item", "valor": 1},
+        {"nome": "🪞 Skin care 2", "tipo": "item", "valor": 2},
+        {"nome": "✨ Skin care 3", "tipo": "item", "valor": 3},
+    ]
+
+def listar_premios():
+    """Lista prêmios cadastrados (coleção premios). Se vazia, retorna default."""
+    try:
+        docs = fs_get("premios")
+        out = [fs_doc_to_dict(d) for d in docs.get("documents", [])]
+        out.sort(key=lambda x: x.get("ordem", 0))
+        if not out:
+            out = premiacoes_default()
+        return out
+    except Exception:
+        return premiacoes_default()
+
+def cadastrar_premio(nome, tipo="item", valor=0):
+    """Cadastra novo prêmio no catálogo. Id = slug do nome."""
+    import re as _re
+    import hashlib as _hl
+    doc_id = _re.sub(r"[^a-z0-9]+", "_", nome.lower().strip())[:50] or "premio"
+    doc_id = f"{doc_id}_{_hl.md5(nome.encode()).hexdigest()[:6]}"
+    premios = listar_premios()
+    fs_set("premios", doc_id, {
+        "nome": nome, "tipo": tipo, "valor": int(valor),
+        "ordem": len(premios) + 1, "criado_ts": int(time.time()),
+    })
+    return doc_id
+
+def creditar_premio(uid, premio_nome):
+    """Credita prêmio diretamente a um usuário (histórico)."""
+    import time as _t
+    u = usuario(uid)
+    historico = u.get("premios_historico") or []
+    if isinstance(historico, str):
+        try:
+            import json as _json
+            historico = _json.loads(historico) if historico.strip() else []
+        except Exception:
+            historico = []
+    historico = list(historico)
+    historico.append({
+        "premio": premio_nome, "ts": _t.time(), "origem": "admin_direto",
+    })
+    dados = {**u, "premios_historico": historico}
+    # se for página do grimório, incrementa contador
+    if "grimório" in premio_nome.lower() or "grimorio" in premio_nome.lower():
+        dados["paginas_grimorio"] = int(u.get("paginas_grimorio", 0)) + 1
+    salvar_usuario(uid, dados)
+    return True

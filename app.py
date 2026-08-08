@@ -32,7 +32,7 @@ checar_login()
 st.title("🩸 Nosferatu — Controle Remoto")
 st.caption("Painel admin · dados seguros · service account só no servidor")
 
-aba = st.tabs(["📊 Usuários", "🎯 Metas", "⚔️ Desafios", "🜏 Íncubo", "🔒 Limites/Bloqueios", "📢 Alertas", "📜 Logs"])
+aba = st.tabs(["📊 Usuários", "🎯 Metas", "⚔️ Desafios", "🎁 Prêmios", "🜏 Íncubo", "🔒 Limites/Bloqueios", "📢 Alertas", "📜 Logs"])
 
 # ===== Logs (histórico de ações do painel, em aba própria) =====
 if "logs" not in st.session_state:
@@ -90,6 +90,53 @@ def _mover_livro_painel(uid, livro, nova_coluna):
     except Exception as e:
         st.error(f"Falha ao mover: {e}")
 
+def _editar_metadados_livro(uid, livro):
+    """Form para editar metadados de um livro do usuário (categoria, título, autor, páginas)."""
+    with st.form(key=f"meta_livro_{uid}_{livro.get('id','')}"):
+        novo_titulo = st.text_input("Título", value=livro.get("titulo", ""), key=f"t_{uid}_{livro.get('id','')}")
+        novo_autor = st.text_input("Autor", value=livro.get("autor", ""), key=f"a_{uid}_{livro.get('id','')}")
+        nova_cat = st.text_input("Categoria", value=livro.get("categoria", ""), key=f"c_{uid}_{livro.get('id','')}")
+        novas_pag = st.number_input("Páginas totais", min_value=1, max_value=100000,
+                                    value=int(livro.get("paginasTotais", 1) or 1), key=f"p_{uid}_{livro.get('id','')}")
+        sub = st.form_submit_button("💾 Salvar metadados")
+        if sub:
+            try:
+                import json as _json
+                u = fb.usuario(uid)
+                livros = u.get("livros") or []
+                if isinstance(livros, str):
+                    livros = _json.loads(livros) if livros.strip() else []
+                livros = list(livros)
+                for lb in livros:
+                    if isinstance(lb, dict) and lb.get("id") == livro.get("id"):
+                        lb["titulo"] = novo_titulo.strip()
+                        lb["autor"] = novo_autor.strip()
+                        lb["categoria"] = nova_cat.strip()
+                        lb["paginasTotais"] = int(novas_pag)
+                        break
+                j = []
+                try:
+                    j = _json.loads(u.get("livros_json") or "[]")
+                except Exception:
+                    j = []
+                if isinstance(j, list):
+                    for lb in j:
+                        if isinstance(lb, dict) and lb.get("id") == livro.get("id"):
+                            lb["titulo"] = novo_titulo.strip()
+                            lb["autor"] = novo_autor.strip()
+                            lb["categoria"] = nova_cat.strip()
+                            lb["paginasTotais"] = int(novas_pag)
+                            break
+                dados = {**u, "livros": livros}
+                if j:
+                    dados["livros_json"] = _json.dumps(j, ensure_ascii=False)
+                fb.salvar_usuario(uid, dados)
+                _usuarios_cache.clear()
+                _log(f"Metadados do livro '{livro.get('titulo','?')}' editados ({uid})", "livro")
+                st.success("📖 Metadados salvos")
+            except Exception as ex:
+                st.error(f"Falha: {ex}")
+
 @st.cache_data(ttl=10)
 def _usuarios_cache():
     try:
@@ -124,11 +171,25 @@ with aba[0]:
         for uid, d in us:
             st.markdown(f"**{uid}** — {d.get('nome', uid)} · nível {d.get('nivel', '?')} · "
                         f"lidos {d.get('livrosLidos', 0)}/{d.get('lidos_max', 10)} · "
-                        f"páginas {d.get('paginasLidas', 0)} · ativo {d.get('ativo', True)}")
+                        f"páginas {d.get('paginasLidas', 0)} · grimório {d.get('paginas_grimorio', 0)} · "
+                        f"ativo {d.get('ativo', True)}")
             if d.get("fcm_token"):
                 st.caption(f"  ✅ FCM registrado ({d['fcm_token'][:20]}…)")
             else:
                 st.caption("  ⚠️ Sem FCM (app ainda não abriu com Firebase)")
+            # histórico de prêmios
+            hist_u = d.get("premios_historico") or []
+            if isinstance(hist_u, str):
+                try:
+                    import json as _json
+                    hist_u = _json.loads(hist_u) if hist_u.strip() else []
+                except Exception:
+                    hist_u = []
+            if hist_u:
+                with st.expander(f"🏆 Prêmios de {uid} ({len(hist_u)})"):
+                    for ph in list(hist_u)[-20:]:
+                        if isinstance(ph, dict):
+                            st.markdown(f"- {ph.get('premio','?')} · {ph.get('origem','')}")
             # Biblioteca do usuário (do backup livros_json ou array livros)
             livros_u = d.get("livros") or []
             if isinstance(livros_u, str):
@@ -157,6 +218,8 @@ with aba[0]:
                                 key=f"col_{uid}_{lb.get('id','')}", label_visibility="collapsed")
                             if nova_col != col:
                                 _mover_livro_painel(uid, lb, nova_col)
+                        with st.expander(f"✏️ Editar metadados de '{lb.get('titulo','?')}'"):
+                            _editar_metadados_livro(uid, lb)
             st.divider()
     else:
         st.info("Nenhum usuário ainda. Crie abaixo — depois o app faz login com o código.")
@@ -167,6 +230,12 @@ with aba[0]:
         e_nome = st.text_input("Nome (deixe vazio p/ manter)", placeholder="Novo nome")
         e_senha = st.text_input("Nova senha (deixe vazio p/ manter)", type="password")
         e_lidos = st.number_input("Limite LIDOS", min_value=1, max_value=500, value=10)
+        e_paginas = st.number_input("Páginas acumuladas", min_value=0, max_value=100000, value=0,
+                                    help="Total de páginas lidas da biblioteca (contador geral)")
+        e_grimorio = st.number_input("Páginas do Grimório", min_value=0, max_value=10000, value=0,
+                                     help="Páginas do grimório ganhas em metas/desafios (10 = 1 grimório completo)")
+        e_nivel = st.number_input("Nível", min_value=1, max_value=999, value=1)
+        e_pontos = st.number_input("Pontos", min_value=0, max_value=100000, value=0)
         e_editar = st.form_submit_button("💾 Salvar alterações")
         if e_editar:
             if not e_uid:
@@ -183,9 +252,19 @@ with aba[0]:
                         h, salt = fb._hash_senha(e_senha)
                         dados["senha_hash"] = h
                         dados["senha_salt"] = salt
+                    # campos de progresso (só sobrescreve se o usuário digitou algo)
+                    if e_paginas > 0 or u.get("paginasLidas"):
+                        dados["paginasLidas"] = int(e_paginas)
+                    if e_grimorio > 0 or u.get("paginas_grimorio"):
+                        dados["paginas_grimorio"] = int(e_grimorio)
+                    if e_nivel > 0:
+                        dados["nivel"] = int(e_nivel)
+                    if e_pontos > 0 or u.get("pontos"):
+                        dados["pontos"] = int(e_pontos)
                     fb.salvar_usuario(e_uid, dados)
                     _usuarios_cache.clear()
-                    _log(f"Usuário '{e_uid}' atualizado (nome={e_nome.strip() or 'mantido'}, lidos_max={int(e_lidos)})", "usuario")
+                    _log(f"Usuário '{e_uid}' atualizado (nome={e_nome.strip() or 'mantido'}, lidos_max={int(e_lidos)}, "
+                         f"páginas={int(e_paginas)}, grimório={int(e_grimorio)}, nível={int(e_nivel)}, pontos={int(e_pontos)})", "usuario")
                     st.success(f"Usuário '{e_uid}' atualizado")
                 except Exception as ex:
                     _log(f"Falha editar {e_uid}: {ex}", "erro")
@@ -214,12 +293,18 @@ with aba[0]:
 # ===== Aba Metas =====
 with aba[1]:
     st.subheader("🎯 Metas com prazo")
-    st.caption("Cadastre uma meta de páginas/dia com validade. A usuária adere no app; venceu o prazo sem aderir, some. Venceu cumprindo → ganha página do grimório.")
+    st.caption("Meta = N páginas em até X dias. Venceu cumprindo → ganha prêmio. Prazo expirou sem cumprir → fresh meat +1.")
     uid = selecionar_usuario("Usuário (meta)", key="meta")
     m_titulo = st.text_input("Título da meta", placeholder="Meta da semana", key="meta_titulo")
-    m_corpo = st.text_area("Descrição", placeholder="Leia 15 páginas por dia!", key="meta_corpo")
-    m_paginas = st.number_input("Páginas por dia", min_value=1, max_value=500, value=15, key="meta_paginas")
-    m_dias = st.number_input("Válida por (dias)", min_value=1, max_value=90, value=7, key="meta_dias")
+    m_corpo = st.text_area("Descrição", placeholder="Leia 200 páginas em 7 dias!", key="meta_corpo")
+    m_paginas = st.number_input("Total de páginas", min_value=1, max_value=5000, value=200, key="meta_paginas")
+    m_dias = st.number_input("Prazo (dias)", min_value=1, max_value=90, value=7, key="meta_dias")
+    try:
+        premios_meta = fb.listar_premios()
+        nomes_meta = [pr.get("nome", "?") for pr in premios_meta]
+    except Exception:
+        nomes_meta = ["📄 Página do Grimório"]
+    m_premio = st.selectbox("Prêmio", nomes_meta, key="meta_premio")
     if st.button("📌 Cadastrar meta"):
         if not uid: st.error("Informe usuário")
         elif not m_titulo: st.error("Título obrigatório")
@@ -230,10 +315,11 @@ with aba[1]:
                 # lista é bloqueada p/ token anônimo). 1 meta ativa por usuário.
                 fb.fs_set("metas", uid, {
                     "uid": uid, "titulo": m_titulo, "descricao": m_corpo or m_titulo,
-                    "paginas_por_dia": int(m_paginas), "validade_ts": int(_t.time()) + int(m_dias) * 86400,
-                    "criada_ts": int(_t.time()), "aderida": False,
+                    "paginas_total": int(m_paginas), "validade_ts": int(_t.time()) + int(m_dias) * 86400,
+                    "premio": m_premio, "criada_ts": int(_t.time()), "aderida": True,
+                    "resultado": "", "premio_entregue": False,
                 })
-                _log(f"Meta cadastrada p/ {uid}: {m_titulo} ({int(m_paginas)} pág/dia, {int(m_dias)}d)", "meta")
+                _log(f"Meta cadastrada p/ {uid}: {m_titulo} ({int(m_paginas)}p em {int(m_dias)}d, prêmio: {m_premio})", "meta")
                 st.success(f"Meta cadastrada p/ {uid}")
             except Exception as e:
                 _log(f"Falha meta {uid}: {e}", "erro")
@@ -245,8 +331,11 @@ with aba[1]:
         for d in metas.get("documents", []):
             m = fb.fs_doc_to_dict(d)
             if m.get("uid") != (uid or ""): continue
-            st.markdown(f"**{m.get('titulo','?')}** · {m.get('paginas_por_dia','?')} pág/dia · "
-                        f"aderida: {'✅' if m.get('aderida') else '⏳'} · válida até {_t.strftime('%d/%m', _t.localtime(m.get('validade_ts', 0)))}")
+            res = m.get("resultado", "")
+            badge = {"venceu": "🏆", "perdeu": "💀", "": "⏳"}.get(res, "⏳")
+            st.markdown(f"**{m.get('titulo','?')}** · {m.get('paginas_total','?')} páginas · "
+                        f"prêmio: {m.get('premio','📄 Página do Grimório')} · {badge} {res or 'em andamento'} · "
+                        f"válida até {_t.strftime('%d/%m', _t.localtime(m.get('validade_ts', 0)))}")
     except Exception as e:
         st.error(f"Erro metas: {e}")
 
@@ -268,8 +357,57 @@ with aba[2]:
                 _log(f"Falha desafio {uid}: {e}", "erro")
                 st.error(f"Falha: {e}")
 
-# ===== Aba Íncubo =====
+# ===== Aba Prêmios =====
 with aba[3]:
+    st.subheader("🎁 Prêmios — catálogo dinâmico")
+    st.caption("Cadastre novos prêmios ou credite diretamente a um usuário. Metas/desafios usam este catálogo.")
+
+    try:
+        premios = fb.listar_premios()
+        st.markdown("**Catálogo atual:**")
+        for pr in premios:
+            tipo = "📄 página grimório" if pr.get("tipo") == "pagina_grimorio" else "🎁 item"
+            st.markdown(f"- {pr.get('nome','?')} · {tipo}" + (f" · R${pr.get('valor',0)}" if pr.get('valor') else ""))
+    except Exception as e:
+        st.error(f"Erro prêmios: {e}")
+
+    st.divider()
+    st.subheader("➕ Cadastrar novo prêmio")
+    with st.form("premio_form"):
+        p_nome = st.text_input("Nome do prêmio", placeholder="ex: 🎧 Fone Bluetooth")
+        p_tipo = st.selectbox("Tipo", ["item", "pagina_grimorio"], format_func=lambda t: "🎁 Item" if t == "item" else "📄 Página do Grimório")
+        p_valor = st.number_input("Valor (R$, opcional)", min_value=0, max_value=10000, value=0)
+        p_enviar = st.form_submit_button("💾 Cadastrar prêmio")
+        if p_enviar:
+            if not p_nome.strip():
+                st.error("Nome obrigatório")
+            else:
+                try:
+                    fb.cadastrar_premio(p_nome.strip(), p_tipo, int(p_valor))
+                    _log(f"Prêmio cadastrado: {p_nome.strip()} ({p_tipo})", "premio")
+                    st.success(f"Prêmio '{p_nome.strip()}' cadastrado")
+                except Exception as e:
+                    _log(f"Falha prêmio {p_nome}: {e}", "erro")
+                    st.error(f"Falha: {e}")
+
+    st.divider()
+    st.subheader("🎯 Creditar prêmio a um usuário")
+    p_uid = selecionar_usuario("Usuário (creditar)", key="creditar")
+    if p_uid:
+        nomes = [pr.get("nome", "?") for pr in premios]
+        p_sel = st.selectbox("Prêmio", nomes, key="creditar_sel")
+        if st.button("🎁 Creditar"):
+            try:
+                fb.creditar_premio(p_uid, p_sel)
+                _usuarios_cache.clear()
+                _log(f"Prêmio '{p_sel}' creditado p/ {p_uid}", "premio")
+                st.success(f"Prêmio '{p_sel}' creditado p/ {p_uid}")
+            except Exception as e:
+                _log(f"Falha creditar {p_uid}: {e}", "erro")
+                st.error(f"Falha: {e}")
+
+# ===== Aba Íncubo =====
+with aba[4]:
     st.subheader("🜏 Íncubo — invocação remota")
     uid = selecionar_usuario("Usuário (íncubo)", key="incubo")
     modo = st.radio("Modo de invocação", ["Agora (abre o app direto no íncubo)", "Próxima abertura (usuária vê no próximo open)"])
@@ -296,7 +434,7 @@ with aba[3]:
                 st.error(f"Falha: {e}")
 
 # ===== Aba Limites/Bloqueios =====
-with aba[4]:
+with aba[5]:
     st.subheader("🔒 Limites e bloqueios por usuário")
     uid = selecionar_usuario("Usuário (limites)", key="limites")
     if uid:
@@ -321,7 +459,7 @@ with aba[4]:
             st.success("Limites salvos — app aplica na próxima sincronização")
 
 # ===== Aba Alertas =====
-with aba[5]:
+with aba[6]:
     st.subheader("📢 Alertas gerais")
     uid = selecionar_usuario("Usuário (alerta)", key="alerta")
     a_titulo = st.text_input("Título do alerta", placeholder="Lembrete")
@@ -377,7 +515,7 @@ with aba[5]:
                 st.error(f"Falha ao agendar: {e}")
 
 # ===== Aba Logs =====
-with aba[6]:
+with aba[7]:
     st.subheader("📜 Logs de ações")
     st.caption("Histórico do que foi feito no painel (últimas 500). Não polui as abas de uso.")
     if not st.session_state.logs:
