@@ -342,12 +342,14 @@ def disparar_meta(uid, titulo, corpo):
     enviar_push(tok, titulo, corpo, tipo="meta")
     return True
 
-def disparar_desafio(uid, titulo, corpo):
+def disparar_desafio(uid, titulo, corpo, perde_paginas=True, perde_carne=True):
     u = usuario(uid)
     tok = u.get("fcm_token", "")
     if not tok:
         raise RuntimeError("Usuário sem fcm_token registrado (app ainda não abriu com Firebase).")
     enviar_push(tok, titulo, corpo, tipo="desafio")
+    # grava penalidades no doc do usuário — app lê na próxima sincronização
+    salvar_usuario(uid, {**u, "desafio_perde_paginas": bool(perde_paginas), "desafio_perde_carne": bool(perde_carne)})
     return True
 
 # ===== Prêmios (catálogo dinâmico) =====

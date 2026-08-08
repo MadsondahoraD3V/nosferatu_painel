@@ -305,6 +305,12 @@ with aba[1]:
     except Exception:
         nomes_meta = ["📄 Página do Grimório"]
     m_premio = st.selectbox("Prêmio", nomes_meta, key="meta_premio")
+    st.caption("🩸 Penalidades em caso de FALHA (prazo expira sem cumprir):")
+    col_p1, col_p2 = st.columns(2)
+    with col_p1:
+        m_perde_paginas = st.checkbox("Perde páginas (progresso zerado)", value=True, key="meta_perde_paginas")
+    with col_p2:
+        m_perde_carne = st.checkbox("Perde pedaço de carne (Punição do Íncubo)", value=True, key="meta_perde_carne")
     if st.button("📌 Cadastrar meta"):
         if not uid: st.error("Informe usuário")
         elif not m_titulo: st.error("Título obrigatório")
@@ -318,8 +324,9 @@ with aba[1]:
                     "paginas_total": int(m_paginas), "validade_ts": int(_t.time()) + int(m_dias) * 86400,
                     "premio": m_premio, "criada_ts": int(_t.time()), "aderida": True,
                     "resultado": "", "premio_entregue": False,
+                    "perde_paginas": bool(m_perde_paginas), "perde_carne": bool(m_perde_carne),
                 })
-                _log(f"Meta cadastrada p/ {uid}: {m_titulo} ({int(m_paginas)}p em {int(m_dias)}d, prêmio: {m_premio})", "meta")
+                _log(f"Meta cadastrada p/ {uid}: {m_titulo} ({int(m_paginas)}p em {int(m_dias)}d, prêmio: {m_premio}, perde páginas: {bool(m_perde_paginas)}, perde carne: {bool(m_perde_carne)})", "meta")
                 st.success(f"Meta cadastrada p/ {uid}")
             except Exception as e:
                 _log(f"Falha meta {uid}: {e}", "erro")
@@ -345,13 +352,19 @@ with aba[2]:
     uid = selecionar_usuario("Usuário (desafio)", key="desafio")
     d_titulo = st.text_input("Título do desafio", placeholder="Desafio do íncubo")
     d_corpo = st.text_area("Descrição do desafio", placeholder="Complete 3 livros de true crime!", key="desafio_corpo")
+    st.caption("🩸 Penalidades em caso de FALHA do desafio:")
+    col_d1, col_d2 = st.columns(2)
+    with col_d1:
+        d_perde_paginas = st.checkbox("Perde páginas (progresso zerado)", value=True, key="desafio_perde_paginas")
+    with col_d2:
+        d_perde_carne = st.checkbox("Perde pedaço de carne (Punição do Íncubo)", value=True, key="desafio_perde_carne")
     if st.button("⚔️ Disparar desafio"):
         if not uid: st.error("Informe usuário")
         elif not d_titulo: st.error("Título obrigatório")
         else:
             try:
-                fb.disparar_desafio(uid, d_titulo, d_corpo or d_titulo)
-                _log(f"Desafio enviado p/ {uid}: {d_titulo}", "desafio")
+                fb.disparar_desafio(uid, d_titulo, d_corpo or d_titulo, perde_paginas=bool(d_perde_paginas), perde_carne=bool(d_perde_carne))
+                _log(f"Desafio enviado p/ {uid}: {d_titulo} (perde páginas: {bool(d_perde_paginas)}, perde carne: {bool(d_perde_carne)})", "desafio")
                 st.success(f"Desafio enviado p/ {uid}")
             except Exception as e:
                 _log(f"Falha desafio {uid}: {e}", "erro")
@@ -513,6 +526,30 @@ with aba[6]:
                 st.success(f"Alerta agendado p/ {ag_uid} em {ag_data} {ag_hora}")
             except Exception as e:
                 st.error(f"Falha ao agendar: {e}")
+
+    st.divider()
+    st.subheader("🔁 Alerta recorrente (todo dia)")
+    st.caption("Repete diariamente no horário definido — título e corpo fixos. O app checa na sincronização.")
+    rc_uid = st.text_input("Código do usuário (recorrente)", key="rc_uid", placeholder="madson")
+    rc_titulo = st.text_input("Título (recorrente)", key="rc_tit", placeholder="Hora da leitura")
+    rc_corpo = st.text_area("Mensagem (recorrente)", key="rc_corpo", placeholder="Está na hora de ler 🩸")
+    rc_hora = st.time_input("Horário diário (recorrente)", key="rc_hora", value=_dt.time(20, 0))
+    if st.button("🔁 Ativar recorrente"):
+        if not rc_uid or not rc_titulo:
+            st.error("Código e título obrigatórios")
+        else:
+            try:
+                import datetime as _dt
+                # guarda o horário diário + flag recorrente; id fixo = uid (doc único)
+                fb.fs_set("alertas", rc_uid, {
+                    "uid": rc_uid, "titulo": rc_titulo, "corpo": rc_corpo or rc_titulo,
+                    "recorrente": True, "hora": f"{rc_hora.hour:02d}:{rc_hora.minute:02d}",
+                    "horario_ts": 0, "enviado": False,
+                })
+                _log(f"Alerta RECORRENTE ativado p/ {rc_uid} às {rc_hora.hour:02d}:{rc_hora.minute:02d}", "alerta")
+                st.success(f"Recorrente ativado p/ {rc_uid} — todo dia às {rc_hora.hour:02d}:{rc_hora.minute:02d}")
+            except Exception as e:
+                st.error(f"Falha ao ativar recorrente: {e}")
 
 # ===== Aba Logs =====
 with aba[7]:
