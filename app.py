@@ -394,17 +394,17 @@ with aba[3]:
     st.subheader("🎯 Creditar prêmio a um usuário")
     p_uid = selecionar_usuario("Usuário (creditar)", key="creditar")
     if p_uid:
-        nomes = [pr.get("nome", "?") for pr in premios]
-        p_sel = st.selectbox("Prêmio", nomes, key="creditar_sel")
-        if st.button("🎁 Creditar"):
-            try:
-                fb.creditar_premio(p_uid, p_sel)
-                _usuarios_cache.clear()
-                _log(f"Prêmio '{p_sel}' creditado p/ {p_uid}", "premio")
-                st.success(f"Prêmio '{p_sel}' creditado p/ {p_uid}")
-            except Exception as e:
-                _log(f"Falha creditar {p_uid}: {e}", "erro")
-                st.error(f"Falha: {e}")
+            nomes = [pr.get("nome", "?") for pr in premios]
+            p_sel = st.selectbox("Prêmio", nomes, key="creditar_premio_sel")
+            if st.button("🎁 Creditar"):
+                try:
+                    fb.creditar_premio(p_uid, p_sel)
+                    _usuarios_cache.clear()
+                    _log(f"Prêmio '{p_sel}' creditado p/ {p_uid}", "premio")
+                    st.success(f"Prêmio '{p_sel}' creditado p/ {p_uid}")
+                except Exception as e:
+                    _log(f"Falha creditar {p_uid}: {e}", "erro")
+                    st.error(f"Falha: {e}")
 
 # ===== Aba Íncubo =====
 with aba[4]:
