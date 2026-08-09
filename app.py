@@ -6,6 +6,7 @@ Acesso protegido por senha (st.secrets['painel']['senha']).
 """
 import streamlit as st
 import firebase_helper as fb
+import datetime as _dt
 
 st.set_page_config(page_title="Nosferatu — Painel", page_icon="🩸", layout="wide")
 
