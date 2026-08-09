@@ -503,7 +503,7 @@ with aba[6]:
             st.success("Limites salvos — app aplica na próxima sincronização")
 
 # ===== Aba Alertas =====
-with aba[6]:
+with aba[7]:
     st.subheader("📢 Alertas gerais")
     uid = selecionar_usuario("Usuário (alerta)", key="alerta")
     a_titulo = st.text_input("Título do alerta", placeholder="Lembrete")
@@ -610,7 +610,7 @@ with aba[6]:
                 st.error(f"Falha ao ativar recorrente: {e}")
 
 # ===== Aba Logs =====
-with aba[7]:
+with aba[8]:
     st.subheader("📜 Logs de ações")
     st.caption("Histórico do que foi feito no painel (últimas 500). Não polui as abas de uso.")
     if not st.session_state.logs:
