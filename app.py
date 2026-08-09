@@ -534,6 +534,35 @@ with aba[6]:
                 st.error(f"Falha: {e}")
 
     st.divider()
+    st.subheader("📋 Alertas na fila / enviados")
+    st.caption("Histórico da coleção `alertas` (Firestore). Recarregue a página pra atualizar.")
+    try:
+        docs = fb.fs_get("alertas")
+        docs_l = docs.get("documents", []) if docs else []
+        if docs_l:
+            rows = []
+            for d in docs_l:
+                dd = fb.fs_doc_to_dict(d)
+                doc_id = d["name"].split("/")[-1]
+                ts = dd.get("horario_ts", 0)
+                import datetime as _dth
+                when = _dth.datetime.fromtimestamp(ts / 1000).strftime("%d/%m %H:%M") if ts else "—"
+                rows.append({
+                    "id": doc_id,
+                    "usuario": dd.get("uid", ""),
+                    "titulo": dd.get("titulo", ""),
+                    "corpo": dd.get("corpo", "")[:40],
+                    "quando": when,
+                    "status": "✅ enviado" if dd.get("enviado") else "⏳ fila",
+                    "recorrente": "🔁" if dd.get("recorrente") else "",
+                })
+            st.table(rows)
+        else:
+            st.info("Nenhum alerta na coleção.")
+    except Exception as e:
+        st.error(f"Erro ao listar alertas: {e}")
+
+    st.divider()
     st.subheader("🕐 Agendar alerta")
     st.caption("Agenda no horário escolhido. O app mostra quando estiver na hora (não precisa de push).")
     ag_uid = st.text_input("Código do usuário (agendar)", key="alg_uid", placeholder="madson")
