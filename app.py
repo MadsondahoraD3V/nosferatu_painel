@@ -33,7 +33,7 @@ checar_login()
 st.title("🩸 Nosferatu — Controle Remoto")
 st.caption("Painel admin · dados seguros · service account só no servidor")
 
-aba = st.tabs(["📊 Usuários", "🎯 Metas", "⚔️ Desafios", "🎁 Prêmios", "🜏 Íncubo", "📚 Biblioteca", "🔒 Limites/Bloqueios", "📢 Alertas", "📜 Logs"])
+aba = st.tabs(["📊 Usuários", "🎯 Metas", "⚔️ Desafios", "🎁 Prêmios", "🜏 Íncubo", "📚 Biblioteca", "🔒 Limites/Bloqueios", "📢 Alertas", "⚖️ Pontos/Categoria", "📜 Logs"])
 
 # ===== Logs (histórico de ações do painel, em aba própria) =====
 if "logs" not in st.session_state:
@@ -609,8 +609,40 @@ with aba[7]:
             except Exception as e:
                 st.error(f"Falha ao ativar recorrente: {e}")
 
-# ===== Aba Logs =====
+# ===== Aba Pontos por Categoria =====
 with aba[8]:
+    st.subheader("⚖️ Pontos por categoria")
+    st.caption("Define quantos pontos cada livro dá ao ser concluído. O app baixa na sincronização (até 15s).")
+    cats = ["outros", "romances", "fantastica", "truecrime", "guerra", "politica", "religiao", "filosofia"]
+    labels = ["📦 Outros", "❤️ Romances", "🧙 Literatura Fantástica", "🔪 True Crime",
+              "⚔️ Segunda Guerra", "🏛️ Política", "⛪ Religião", "📖 Filosofia"]
+    defaults = [2, 3, 4, 3, 5, 6, 4, 6]
+    # Lê valores atuais do Firestore
+    uid_pesos = st.text_input("Usuário (vazio = todos)", key="pesos_uid", placeholder="madson")
+    vals = list(defaults)
+    if uid_pesos:
+        u = fb.usuario(uid_pesos) or {}
+        for i, c in enumerate(cats):
+            vals[i] = u.get("peso_" + c, defaults[i])
+    novos = {}
+    cols = st.columns(2)
+    for i, (c, lab) in enumerate(zip(cats, labels)):
+        with cols[i % 2]:
+            novos[c] = st.slider(lab, 1, 12, vals[i], key=f"peso_{c}")
+    if st.button("💾 Salvar pesos"):
+        try:
+            if not uid_pesos:
+                st.error("Informe usuário")
+            else:
+                data = {f"peso_{c}": v for c, v in novos.items()}
+                fb.fs_set("usuarios", uid_pesos, data)
+                _log(f"Pesos de categorias salvos p/ {uid_pesos}: {novos}", "config")
+                st.success(f"Pesos salvos — app aplica na próxima sincronização")
+        except Exception as e:
+            st.error(f"Falha: {e}")
+
+# ===== Aba Logs =====
+with aba[9]:
     st.subheader("📜 Logs de ações")
     st.caption("Histórico do que foi feito no painel (últimas 500). Não polui as abas de uso.")
     if not st.session_state.logs:
