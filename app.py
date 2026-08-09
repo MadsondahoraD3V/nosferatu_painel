@@ -41,7 +41,6 @@ if "logs" not in st.session_state:
 
 def _log(msg, tipo="info"):
     """Registra ação no histórico (aba Logs) — não polui a visualização."""
-    import datetime as _dt
     st.session_state.logs.append(
         f"[{_dt.datetime.now().strftime('%d/%m %H:%M:%S')}] {tipo.upper()}: {msg}"
     )
@@ -543,7 +542,6 @@ with aba[6]:
     ag_data = st.date_input("Data (agendar)", key="alg_data")
     ag_hora = st.time_input("Hora (agendar)", key="alg_hora")
     if st.button("📅 Agendar alerta"):
-        import datetime as _dt
         if not ag_uid or not ag_titulo:
             st.error("Código e título obrigatórios")
         else:
@@ -571,7 +569,6 @@ with aba[6]:
             st.error("Código e título obrigatórios")
         else:
             try:
-                import datetime as _dt
                 # guarda o horário diário + flag recorrente; id fixo = uid (doc único)
                 fb.fs_set("alertas", rc_uid, {
                     "uid": rc_uid, "titulo": rc_titulo, "corpo": rc_corpo or rc_titulo,
